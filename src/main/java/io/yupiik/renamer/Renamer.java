@@ -31,9 +31,11 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
     private final Path from;
     private final Path to;
     private final Collection<Predicate<String>> excludes;
+    private final Collection<Predicate<String>> excludeFiltering;
     private final Collection<BiFunction<String, String, String>> replacements;
     private final boolean dryRun;
     private final boolean renameFolders;
+    private final boolean overwrite;
 
     @Override
     public void run() {
@@ -98,6 +100,21 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
         }
         log.finest(() -> "Replacing " + file);
         try {
+            if (excludeFiltering.stream().anyMatch(e -> e.test(name))) {
+                final Path target = toTarget(file);
+                if (dryRun) {
+                    log.info(() -> "[DRYRUN] Copying " + file + " to " + target);
+                    return FileVisitResult.CONTINUE;
+                }
+                if (!overwrite && Files.exists(target)) {
+                    log.info(() -> target + " already exists, skipping");
+                    return FileVisitResult.CONTINUE;
+                }
+                Files.createDirectories(target.getParent());
+                Files.copy(file, target);
+                return FileVisitResult.CONTINUE;
+            }
+
             final var originalContent = Files.readString(file);
             var content = originalContent;
             for (final var fn : replacements) {
@@ -109,28 +126,15 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                 log.info(() -> "Replacements done in " + file);
             }
 
-            var relativized = from.relativize(file).toString();
-            if (renameFolders) {
-                var value = relativized;
-                for (final var fn : replacements) {
-                    value = fn.apply("", value);
-                }
-                if (!relativized.equals(value)) {
-                    final var r = relativized;
-                    final var v = value;
-                    log.finest(() -> "Renaming folder " + r + " to " + v);
-                }
-                relativized = value;
-            }
-            final var target = to.resolve(relativized);
-
+            final Path target = toTarget(file);
             if (dryRun) {
                 final var ctt = content;
                 log.info(() -> "[DRYRUN] Writing " + file + " to " + target + ":\n" + ctt);
                 return FileVisitResult.CONTINUE;
             }
-
-            if (target.equals(file)) {
+            if (!overwrite && Files.exists(target)) {
+                log.info(() -> target + " already exists, skipping");
+            } else if (target.equals(file)) {
                 Files.writeString(file, content, StandardOpenOption.TRUNCATE_EXISTING);
             } else {
                 Files.createDirectories(target.getParent());
@@ -143,6 +147,23 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
         return FileVisitResult.CONTINUE;
     }
 
+    private Path toTarget(Path file) {
+        var relativized = from.relativize(file).toString();
+        if (renameFolders) {
+            var value = relativized;
+            for (final var fn : replacements) {
+                value = fn.apply("", value);
+            }
+            if (!relativized.equals(value)) {
+                final var r = relativized;
+                final var v = value;
+                log.finest(() -> "Renaming folder " + r + " to " + v);
+            }
+            relativized = value;
+        }
+        return to.resolve(relativized);
+    }
+
     public static void main(final String... args) {
         System.setProperty("java.util.logging.manager", System.getProperty("java.util.logging.manager",
                 "io.yupiik.logging.jul.YupiikLogManager"));
@@ -153,9 +174,11 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
 
         boolean dryRun = false;
         boolean renameFolders = false;
+        boolean overwrite = false;
         Path from = null;
         Path to = null;
         final Collection<Predicate<String>> excludes = new ArrayList<>();
+        final Collection<Predicate<String>> excludeFiltering = new ArrayList<>();
         final Collection<BiFunction<String /*filename*/, String/*content*/, String/*result*/>> renamings = new ArrayList<>();
         for (int i = 0; i < args.length; i += 2) {
             final var current = args[i];
@@ -167,6 +190,9 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                 case "--dry":
                     dryRun = Boolean.parseBoolean(value);
                     break;
+                case "--overwrite":
+                    overwrite = Boolean.parseBoolean(value);
+                    break;
                 case "--rename-folders":
                     renameFolders = Boolean.parseBoolean(value);
                     break;
@@ -176,6 +202,26 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                 case "--to":
                     to = Paths.get(value);
                     break;
+                case "--exclude-filtering":
+                    if ("auto".equals(value)) {
+                        excludeFiltering.addAll(List.of(
+                                s -> s.endsWith(".so"), s -> s.endsWith(".png"), s -> s.endsWith(".svg"),
+                                s -> s.endsWith(".gif"), s -> s.endsWith(".jpeg"), s -> s.endsWith(".jpg"),
+                                s -> s.endsWith(".xsl"), s -> s.endsWith(".xslx"), s -> s.endsWith(".ico"),
+                                s -> s.endsWith(".ttf"), s -> s.endsWith(".woff"), s -> s.endsWith(".woff2"),
+                                s -> s.endsWith(".eot"), s -> s.endsWith(".otf")));
+                    } else if (value.startsWith("*")) {
+                        final var suffix = value.substring(1);
+                        excludeFiltering.add(s -> s.endsWith(suffix));
+                    } else if (value.endsWith("*")) {
+                        final var prefix = value.substring(0, value.length() - 1);
+                        excludeFiltering.add(s -> s.startsWith(prefix));
+                    } else if (value.startsWith("r/")) {
+                        excludeFiltering.add(Pattern.compile(value.substring("r/".length())).asMatchPredicate());
+                    } else {
+                        excludeFiltering.add(s -> Objects.equals(s, value));
+                    }
+                    break;
                 case "--exclude":
                     if ("auto".equals(value)) {
                         excludes.addAll(List.of(
@@ -184,12 +230,7 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                                 ".factorypath"::equals, ".vscode"::equals, "generated"::equals,
                                 ".cache"::equals, ".node"::equals, "screenshots"::equals, "derby.log"::equals,
                                 "release.properties"::equals, s -> s.endsWith(".releaseBackup"),
-                                s -> s.endsWith(".so"), s -> s.endsWith(".png"), s -> s.endsWith(".svg"),
-                                s -> s.endsWith(".gif"), s -> s.endsWith(".jpeg"), s -> s.endsWith(".jpg"),
-                                s -> s.endsWith(".ico"), ".git"::equals,
-                                s -> s.endsWith(".ttf"), s -> s.endsWith(".woff"), s -> s.endsWith(".woff2"),
-                                s -> s.endsWith(".eot"), s -> s.endsWith(".otf"),
-                                s -> s.endsWith(".xsl"), s -> s.endsWith(".xslx"),
+                                ".git"::equals,
                                 s -> s.endsWith(".iml"), s -> s.endsWith(".ipr"), s -> s.endsWith(".iws")));
                     } else if (value.startsWith("*")) {
                         final var suffix = value.substring(1);
@@ -252,6 +293,6 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
         if (to == null || to.equals(from) /*ensure we can check with ==*/) {
             to = from;
         }
-        new Renamer(from, to, excludes, renamings, dryRun, renameFolders).run();
+        new Renamer(from, to, excludes, excludeFiltering, renamings, dryRun, renameFolders, overwrite).run();
     }
 }
