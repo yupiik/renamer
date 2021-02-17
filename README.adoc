@@ -32,3 +32,14 @@ java \
 This command will rename all text (exact replacement with this configuration but you can use regexes prefixing the left part of the renaming configuration with `r/`)
 from files in `/opt/myproject` to `/opt/myrenamedproject`.
 The `--rename-folders` option enables to apply the renaming on folders too.
+
+== Options
+
+--dry [true|false]:: should the renaming be executed or just logged (to test some configuration).
+--overwrite [true|false]:: if the target file exists, should it be overwriten or not (enables to execute it, fix some issues manually and rerun it if configuration changed).
+--rename-folders [true|false]:: should folder also get renamed with the renaming rules.
+--from [string]:: source folder to rename file from.
+--to [string]:: target folder to write renamed file to. Note it can be the same as from (if not set it defaults to it) but it is not recommended since you can loose original state.
+--exclude [string]:: list of files/folders to ignore. Value can be a name (example: `.git` or `node_modules` or `target`), a prefix (`prefix*`), a suffix (`*suffix`) or a regex (`r/<regex>`). Note that `auto` use common java defaults. Can be set N times.
+--exclude-filtering [string]:: files to rename without doing any replacement in them (binaries, images). It behaves as `--exclude`. Can be set N times.
+--renaming [string]:: the renaming rules to do (can be set N times). The value uses this pattern: `before=after` where `before` is the searched string and `after` its replacement. Note that if `before` starts with `r/` it will use a regex to match the text. Finally you can append `?ext=ext1,ext2,...` to the string to filter the replacement for some file extensions only, for example `class=interface?ext=java`.
