@@ -1,0 +1,34 @@
+= Renamer
+
+Change your project name in seconds.
+
+== Build
+
+[source]
+----
+mvn install
+----
+
+== Usage
+
+[source,bash]
+----
+java \
+  -Djava.util.logging.manager=io.yupiik.logging.jul.YupiikLogManager \
+  -cp "target/renamer-*-fat.jar" \
+  io.yupiik.renamer.Renamer \
+  --dry "${DRYRUN:-true}" \
+  --from /opt/myproject \
+  --to /opt/myrenamedproject \
+  --rename-folders true \
+  --exclude auto \
+  --renaming Text1=Text2 \
+  --renaming text1=text2 \
+  --renaming TEXT1=TEXT2 \
+  --renaming txt1-=txt2- \
+  --renaming .txt1=.txt2
+----
+
+This command will rename all text (exact replacement with this configuration but you can use regexes prefixing the left part of the renaming configuration with `r/`)
+from files in `/opt/myproject` to `/opt/myrenamedproject`.
+The `--rename-folders` option enables to apply the renaming on folders too.
