@@ -240,7 +240,8 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                                 new Equals(".cache"), new Equals(".node"), new Equals("screenshots"), new Equals("derby.log"),
                                 new Equals("release.properties"), new EndsWith(".releaseBackup"),
                                 new Equals(".git"),
-                                new EndsWith(".iml"), new EndsWith(".ipr"), new EndsWith(".iws")));
+                                new EndsWith(".iml"), new EndsWith(".ipr"), new EndsWith(".iws"),
+                                new EndsWith(".mp4")));
                     } else if (value.startsWith("*")) {
                         final var suffix = value.substring(1);
                         excludes.add(s -> s.endsWith(suffix));
