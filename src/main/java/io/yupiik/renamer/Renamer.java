@@ -39,6 +39,15 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
 
     @Override
     public void run() {
+        log.finest(() -> "Configuration\n" +
+                "from: " + from + '\n' +
+                "to: " + to + '\n' +
+                "excludes: " + excludes + '\n' +
+                "excludeFiltering: " + excludeFiltering + '\n' +
+                "replacements: " + replacements + '\n' +
+                "dryRun: " + dryRun + '\n' +
+                "renameFolders: " + renameFolders + '\n' +
+                "overwrite: " + overwrite + '\n');
         try {
             Files.walkFileTree(from, this);
         } catch (final IOException e) {
@@ -205,11 +214,11 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                 case "--exclude-filtering":
                     if ("auto".equals(value)) {
                         excludeFiltering.addAll(List.of(
-                                s -> s.endsWith(".so"), s -> s.endsWith(".png"), s -> s.endsWith(".svg"),
-                                s -> s.endsWith(".gif"), s -> s.endsWith(".jpeg"), s -> s.endsWith(".jpg"),
-                                s -> s.endsWith(".xsl"), s -> s.endsWith(".xslx"), s -> s.endsWith(".ico"),
-                                s -> s.endsWith(".ttf"), s -> s.endsWith(".woff"), s -> s.endsWith(".woff2"),
-                                s -> s.endsWith(".eot"), s -> s.endsWith(".otf")));
+                                new EndsWith(".so"), new EndsWith(".png"), new EndsWith(".svg"),
+                                new EndsWith(".gif"), new EndsWith(".jpeg"), new EndsWith(".jpg"),
+                                new EndsWith(".xsl"), new EndsWith(".xslx"), new EndsWith(".ico"),
+                                new EndsWith(".ttf"), new EndsWith(".woff"), new EndsWith(".woff2"),
+                                new EndsWith(".eot"), new EndsWith(".otf")));
                     } else if (value.startsWith("*")) {
                         final var suffix = value.substring(1);
                         excludeFiltering.add(s -> s.endsWith(suffix));
@@ -225,13 +234,13 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                 case "--exclude":
                     if ("auto".equals(value)) {
                         excludes.addAll(List.of(
-                                "node_modules"::equals, ".idea"::equals, "target"::equals,
-                                ".project"::equals, ".classpath"::equals, ".settings"::equals,
-                                ".factorypath"::equals, ".vscode"::equals, "generated"::equals,
-                                ".cache"::equals, ".node"::equals, "screenshots"::equals, "derby.log"::equals,
-                                "release.properties"::equals, s -> s.endsWith(".releaseBackup"),
-                                ".git"::equals,
-                                s -> s.endsWith(".iml"), s -> s.endsWith(".ipr"), s -> s.endsWith(".iws")));
+                                new Equals("node_modules"), new Equals(".idea"), new Equals("target"),
+                                new Equals(".project"), new Equals(".classpath"), new Equals(".settings"),
+                                new Equals(".factorypath"), new Equals(".vscode"), new Equals("generated"),
+                                new Equals(".cache"), new Equals(".node"), new Equals("screenshots"), new Equals("derby.log"),
+                                new Equals("release.properties"), new EndsWith(".releaseBackup"),
+                                new Equals(".git"),
+                                new EndsWith(".iml"), new EndsWith(".ipr"), new EndsWith(".iws")));
                     } else if (value.startsWith("*")) {
                         final var suffix = value.substring(1);
                         excludes.add(s -> s.endsWith(suffix));
@@ -276,11 +285,19 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                     } else {
                         replacement = s -> s.replace(source, target);
                     }
-                    renamings.add((filename, content) -> {
-                        if (!filter.test(filename)) {
-                            return content;
+                    renamings.add(new BiFunction<>() {
+                        @Override
+                        public String apply(final String filename, final String content) {
+                            if (!filter.test(filename)) {
+                                return content;
+                            }
+                            return replacement.apply(content);
                         }
-                        return replacement.apply(content);
+
+                        @Override
+                        public String toString() {
+                            return source + " -> " + target;
+                        }
                     });
                     break;
                 default:
@@ -294,5 +311,35 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
             to = from;
         }
         new Renamer(from, to, excludes, excludeFiltering, renamings, dryRun, renameFolders, overwrite).run();
+    }
+
+    @RequiredArgsConstructor
+    private static class EndsWith implements Predicate<String> {
+        private final String suffix;
+
+        @Override
+        public boolean test(final String s) {
+            return s.endsWith(suffix);
+        }
+
+        @Override
+        public String toString() {
+            return "*." + suffix;
+        }
+    }
+
+    @RequiredArgsConstructor
+    private static class Equals implements Predicate<String> {
+        private final String value;
+
+        @Override
+        public boolean test(final String s) {
+            return Objects.equals(s, value);
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
     }
 }
