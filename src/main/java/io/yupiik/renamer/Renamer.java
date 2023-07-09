@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.java.Log;
 
 import java.io.IOException;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -124,7 +126,7 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
                 return FileVisitResult.CONTINUE;
             }
 
-            final var originalContent = Files.readString(file);
+            final var originalContent = readString(file);
             var content = originalContent;
             for (final var fn : replacements) {
                 content = fn.apply(name, content);
@@ -154,6 +156,14 @@ public final class Renamer extends SimpleFileVisitor<Path> implements Runnable {
             throw ioe;
         }
         return FileVisitResult.CONTINUE;
+    }
+
+    private static String readString(final Path file) throws IOException {
+        try {
+            return Files.readString(file);
+        } catch (final MalformedInputException iae) {
+            return Files.readString(file, StandardCharsets.ISO_8859_1);
+        }
     }
 
     private Path toTarget(Path file) {
